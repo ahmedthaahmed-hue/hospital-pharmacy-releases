@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.7.0",
+  "latestVersion": "1.8.0",
   "killed": false,
-  "message": "Records: controlled medicines register and witnessed counts, fridge temperatures, emergency carts and ward stock, pharmacist interventions, and the accreditation pack.",
-  "publishedAt": "2026-10-14T18:45:31.384Z"
+  "message": "Screen lock, badge and PIN sign-in, two-step sign-in, HTTPS on the network, checked backups and System health.",
+  "publishedAt": "2026-10-14T19:50:15.557Z"
 }
