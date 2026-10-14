@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.2.0",
+  "latestVersion": "1.3.0",
   "killed": false,
-  "message": "Demo hospital for training, and the new Tutorial screen.",
-  "publishedAt": "2026-10-14T15:04:49.818Z"
+  "message": "Roles: owner, pharmacy manager, senior pharmacist, pharmacist, viewer and your own; Admin > Roles.",
+  "publishedAt": "2026-10-14T15:40:12.518Z"
 }
