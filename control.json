@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.6.0",
+  "latestVersion": "1.7.0",
   "killed": false,
-  "message": "Stock between pharmacies: transfers and requests, min/max levels, near-expiry redistribution, suppliers, purchase orders, returns to suppliers, optional prices and stock value, Excel import and export.",
-  "publishedAt": "2026-10-14T18:10:23.111Z"
+  "message": "Records: controlled medicines register and witnessed counts, fridge temperatures, emergency carts and ward stock, pharmacist interventions, and the accreditation pack.",
+  "publishedAt": "2026-10-14T18:45:31.384Z"
 }
