@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.9.0",
+  "latestVersion": "1.10.0",
   "killed": false,
-  "message": "Clinical extras: a second pharmacist's check of orders, dose calculators, an Arabic discharge leaflet, earlier stays, diversion watch, levels from use and ABC x VEN.",
-  "publishedAt": "2026-10-14T20:16:53.877Z"
+  "message": "The interface in Arabic, right to left: each user chooses in Your account → Language.",
+  "publishedAt": "2026-10-14T21:15:16.933Z"
 }
