@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.5.0",
+  "latestVersion": "1.6.0",
   "killed": false,
-  "message": "Barcodes: scan packs on receiving and before dispensing, patient label barcodes, batch quarantine and lot recalls, picking list",
-  "publishedAt": "2026-10-14T17:41:09.898Z"
+  "message": "Stock between pharmacies: transfers and requests, min/max levels, near-expiry redistribution, suppliers, purchase orders, returns to suppliers, optional prices and stock value, Excel import and export.",
+  "publishedAt": "2026-10-14T18:10:23.111Z"
 }
