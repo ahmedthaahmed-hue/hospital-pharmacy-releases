@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.14.0",
+  "latestVersion": "1.15.0",
   "killed": false,
-  "message": "Hospital system link: admissions, doctors' orders and dispensing for billing (turn it on in Admin → Features).",
-  "publishedAt": "2026-10-15T07:02:41.029Z"
+  "message": "An online assistant that answers from totals, and walk-in prescriptions read from a photo (turn them on in Admin → Features).",
+  "publishedAt": "2026-10-15T07:27:23.492Z"
 }
