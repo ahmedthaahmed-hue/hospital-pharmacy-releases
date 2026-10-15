@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.12.0",
+  "latestVersion": "1.13.0",
   "killed": false,
-  "message": "Three new designs: Aurora, Apothecary and Neon lab (palette button → Design).",
-  "publishedAt": "2026-10-15T06:15:18.264Z"
+  "message": "Camera scanning, signed installers and the owner's fleet view (turn them on in Admin → Features).",
+  "publishedAt": "2026-10-15T06:34:38.899Z"
 }
