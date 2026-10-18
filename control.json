@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.16.0",
+  "latestVersion": "1.16.1",
   "killed": false,
-  "message": "About this system: the (i) button on every screen with the version, the author and whom to contact.",
-  "publishedAt": "2026-10-18T09:53:29.390Z"
+  "message": "Updates now install themselves when nobody is working; the author's name in Arabic in About.",
+  "publishedAt": "2026-10-18T10:30:35.382Z"
 }
