@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#2d5bff" />
+    <title>Hospital Pharmacy</title>
+    <script>
+      // Apply the look last shown here before first paint (no flash of another theme or design). lib/prefs.tsx owns
+      // these attributes and remembers them as hps.look.
+      try {
+        var p = JSON.parse(localStorage.getItem("hps.look") || "{}"), d = document.documentElement;
+        var t = p.theme || "light";
+        d.dataset.design = p.design || "command";
+        d.dataset.theme = t; d.dataset.accent = p.accent || "sapphire"; d.dataset.font = p.font || "tajawal";
+        d.dataset.density = p.density || "comfortable"; d.dataset.motion = p.motion || "full"; d.dataset.backdrop = p.backdrop || "on";
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="/assets/index-C0q_GVEo.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/ui-BJ1YBSWk.js">
+    <link rel="modulepreload" crossorigin href="/assets/format-BCyWUK0N.js">
+    <link rel="modulepreload" crossorigin href="/assets/queries-C2jw_c4q.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CirMn_AT.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

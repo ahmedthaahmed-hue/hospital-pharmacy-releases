@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.18.0",
+  "latestVersion": "1.19.0",
   "killed": false,
-  "message": "Arranging screens is freer: drag panels anywhere, resize them freely, arrange table columns inside panels, move label boxes between bands and sidebar screens between groups, with undo.",
-  "publishedAt": "2026-10-18T13:41:48.388Z"
+  "message": "Updates now show their progress on every screen, the sign-in screen too, and say \"Updated to version ...\" when done.",
+  "publishedAt": "2026-10-18T18:26:41.378Z"
 }
