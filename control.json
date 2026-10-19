@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.21.0",
+  "latestVersion": "1.22.0",
   "killed": false,
-  "message": "Updates now install as soon as the system is quiet for a minute, with the time left on screen and no password needed. Fixes pharmacy PC prints also printing on the main server.",
-  "publishedAt": "2026-10-19T21:06:13.551Z"
+  "message": "Updates now download only the files that changed, several at once: seconds to a few minutes instead of up to an hour.",
+  "publishedAt": "2026-10-19T21:39:10.629Z"
 }
