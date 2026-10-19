@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.19.0",
+  "latestVersion": "1.20.0",
   "killed": false,
-  "message": "Updates now show their progress on every screen, the sign-in screen too, and say \"Updated to version ...\" when done.",
-  "publishedAt": "2026-10-18T18:26:41.378Z"
+  "message": "Printing in one press: choose this PC's label and A4 printers once (Printers, Ctrl+Shift+P) and print with no print window. Keyboard shortcuts for the daily work: press F1 on any screen.",
+  "publishedAt": "2026-10-19T20:21:35.229Z"
 }
