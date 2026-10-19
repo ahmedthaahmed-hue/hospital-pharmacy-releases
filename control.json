@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.22.0",
+  "latestVersion": "1.22.1",
   "killed": false,
-  "message": "Updates now download only the files that changed, several at once: seconds to a few minutes instead of up to an hour.",
-  "publishedAt": "2026-10-19T21:39:10.629Z"
+  "message": "Connecting a new pharmacy PC no longer gives up while it downloads a large database. Updates download only what changed.",
+  "publishedAt": "2026-10-19T22:20:16.660Z"
 }
