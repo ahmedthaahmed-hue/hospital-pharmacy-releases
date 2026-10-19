@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.22.1",
+  "latestVersion": "1.23.0",
   "killed": false,
-  "message": "Connecting a new pharmacy PC no longer gives up while it downloads a large database. Updates download only what changed.",
-  "publishedAt": "2026-10-19T22:20:16.660Z"
+  "message": "More freedom arranging the screens: panels can grow past the window (the screen scrolls), and the items inside panels can be moved, resized and hidden.",
+  "publishedAt": "2026-10-19T23:28:17.026Z"
 }
