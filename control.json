@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.20.0",
+  "latestVersion": "1.21.0",
   "killed": false,
-  "message": "Printing in one press: choose this PC's label and A4 printers once (Printers, Ctrl+Shift+P) and print with no print window. Keyboard shortcuts for the daily work: press F1 on any screen.",
-  "publishedAt": "2026-10-19T20:21:35.229Z"
+  "message": "Updates now install as soon as the system is quiet for a minute, with the time left on screen and no password needed. Fixes pharmacy PC prints also printing on the main server.",
+  "publishedAt": "2026-10-19T21:06:13.551Z"
 }
