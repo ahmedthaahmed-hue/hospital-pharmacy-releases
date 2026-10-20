@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.30.0",
+  "latestVersion": "1.31.0",
   "killed": false,
-  "message": "Admins can turn off seasonal themes for the hospital",
-  "publishedAt": "2026-10-20T07:43:05.871Z"
+  "message": "Fixes across the newer features: allergies always shown, Analytics readings, layouts and seasonal themes",
+  "publishedAt": "2026-10-20T15:23:19.492Z"
 }

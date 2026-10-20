@@ -1,0 +1,315 @@
+// Settings registry — the single list of hospital-wide settings: key, group, label/hint, kind, default and
+// limits. The admin API validates against it, /api/lookups and /api/admin/settings return values merged over the
+// defaults (so a new key works without a migration), and the admin "Settings Center" renders its form from the metadata
+// served at /api/admin/settings/schema. Readers use the typed getters below, which fall back to the default whenever a
+// stored value is missing or invalid.
+import { copyDirProblem } from "../lib/folders.js";
+import { FEATURES } from "./features.js";
+import { z } from "zod";
+import { createHash } from "node:crypto";
+import { db } from "../db/index.js";
+/** The seasonal themes' occasions (web/src/app/season-dates.ts SEASONS; the ui.seasons options after auto and off). */
+const SEASON_VALUES = ["ramadan", "eid_fitr", "arafah", "eid_adha", "hijri_new_year", "mawlid", "isra_miraj", "police_day", "sinai_day",
+    "labour_day", "june30", "july23", "october6", "new_year", "sham_nessim", "mothers_day", "nile_flood", "doctors_day", "nurses_day", "pharmacists_day"];
+export const GROUPS = [
+    { key: "hospital", label: "Identity & reports", hint: "Hospital name, messages to users and report header", icon: "hospital" },
+    { key: "appearance", label: "Default appearance", hint: "How the system looks for every user unless they customise their own device", icon: "palette" },
+    { key: "screens", label: "Screens & navigation", hint: "Screen names, which screens are shown, and the phone tab bar", icon: "layout" },
+    { key: "stock", label: "Stock", hint: "Low stock threshold and expiry warnings", icon: "boxes" },
+    { key: "safety", label: "Patient safety", hint: "Allergy, interaction, duplicate and dose checks, and the high-alert double check", icon: "shield" },
+    { key: "alerts", label: "Alerts", hint: "What the alerts bell shows and how often it refreshes", icon: "bell" },
+    { key: "analytics", label: "Analytics", hint: "Thresholds and ratios used by the analytics dashboard, and the order of its sections", icon: "activity" },
+    { key: "printing", label: "Printing & labels", hint: "Label size and what is printed on it", icon: "printer" },
+    { key: "security", label: "Security & sessions", hint: "Session length and password rules", icon: "lock" },
+    { key: "backup", label: "Backups", hint: "Where backups go, how often, and how long they are kept", icon: "database" },
+    { key: "schedule", label: "Medical day", hint: "Schedule engine rules — read only", icon: "calendar" },
+    { key: "his", label: "Hospital system link", hint: "Admissions and doctors' orders from the hospital system; dispensing back for billing", icon: "link" },
+    { key: "ai", label: "Online assistant", hint: "The model and effort of the assistant and the prescription reader", icon: "sparkles" },
+    { key: "features", label: "Features", hint: "Turn each feature added since release 1.4 on or off (Admin → Features)", icon: "toggle" },
+];
+/** Screens (nav paths) that settings may refer to. Keep in sync with web/src/app/nav.tsx. */
+export const SCREENS = ["/", "/runs", "/walkin", "/patients", "/analytics", "/stock", "/supply", "/items", "/templates", "/operations", "/safety", "/clinical", "/records", "/reports", "/chat", "/tutorial", "/admin"];
+const HIDEABLE = SCREENS.filter((s) => s !== "/admin");
+/** Analytics dashboard sections, in their default order. Keep in sync with web/src/pages/analytics. */
+export const ANALYTICS_SECTIONS = [
+    { id: "kpis", label: "Key indicators" },
+    { id: "trend", label: "Daily dispensing and forecast" },
+    { id: "insights", label: "Insights" },
+    { id: "heatmap", label: "Peak hours heatmap" },
+    { id: "departments", label: "Departments" },
+    { id: "staff", label: "User activity" },
+    { id: "topItems", label: "Top items by use" },
+    { id: "abc", label: "ABC analysis" },
+    { id: "returns", label: "Returns analysis" },
+    { id: "stock", label: "Stock health (radar, cover and expiry)" },
+    { id: "reorder", label: "Reorder suggestions" },
+    { id: "deadStock", label: "Dead stock" },
+    { id: "cover", label: "Days of cover" },
+    { id: "locations", label: "Pharmacy comparison" },
+];
+const jsonOk = (v, f) => { try {
+    return f(JSON.parse(v));
+}
+catch {
+    return false;
+} };
+const pathArray = (allowed) => (o) => Array.isArray(o) && o.every((p) => typeof p === "string" && allowed.includes(p)) && new Set(o).size === o.length;
+const bool = (key, group, label, def, hint) => ({ key, group, label, hint, kind: "bool", default: def ? "1" : "0" });
+const int = (key, group, label, def, min, max, unit, hint) => ({ key, group, label, hint, kind: "int", default: String(def), min, max, unit });
+const DAYS_UNIT = "days";
+export const SETTINGS = [
+    // ---- hospital
+    { key: "hospital.name", group: "hospital", label: "Hospital name", hint: "Shown at the top of the side menu, on the sign-in screen and on printed reports.", kind: "text", default: "مستشفى", max: 80 },
+    { key: "hospital.subtitle", group: "hospital", label: "Second line under the name", hint: "For example the pharmacy or department name.", kind: "text", default: "الصيدلية الداخلية", max: 60, optional: true },
+    { key: "report.header", group: "hospital", label: "Report header", hint: "Extra line at the top of every printed report (address or licence number, for example).", kind: "text", default: "", max: 120, optional: true },
+    { key: "report.footer", group: "hospital", label: "Report footer", hint: "Printed at the bottom of every report (signature, note, phone…).", kind: "text", default: "", max: 160, optional: true },
+    { key: "ui.announcement", group: "hospital", label: "Announcement for all users", hint: "A bar shown at the top of every screen — leave empty to hide it.", kind: "longtext", default: "", max: 300, optional: true },
+    { key: "ui.announcement_tone", group: "hospital", label: "Announcement colour", kind: "enum", default: "info",
+        options: [{ value: "info", label: "Info" }, { value: "warn", label: "Warning" }, { value: "danger", label: "Urgent" }, { value: "ok", label: "Good news" }] },
+    // (release 1.24) an image the size of a few hundred KB at most, as a data: URL; served on its own (auth/routes.ts
+    // /logo), not with the settings every screen loads
+    { key: "hospital.logo", group: "hospital", label: "Hospital logo", hint: "Shown instead of the system's mark in the side menu, on the sign-in screen and as the browser tab's icon. PNG, JPEG, WebP or SVG, up to 300 KB.",
+        kind: "longtext", default: "", max: 420_000, optional: true, editor: "logo",
+        check: (v) => (v === "" || /^data:image\/(png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/.test(v) ? null : "Choose a PNG, JPEG, WebP or SVG image") },
+    { key: "auth.login_message", group: "hospital", label: "Sign-in screen message", hint: "Shown under the sign-in form (a support phone number, for example).", kind: "text", default: "", max: 200, optional: true },
+    // ---- appearance (each user may still override on their own device unless locked)
+    { key: "ui.language", group: "appearance", label: "Interface language", kind: "enum", default: "en",
+        hint: "The language of the screens for users who have not chosen their own (Your account), and of the sign-in screen. Clinical data stays as it is.",
+        options: [{ value: "en", label: "English" }, { value: "ar", label: "العربية (Arabic, right to left)" }] },
+    { key: "ui.design", group: "appearance", label: "Design", kind: "enum", default: "command",
+        hint: "The look of every screen. Aurora, Apothecary, Neon lab, Mosaic and Blueprint move gently behind the screens (still with Motion: Reduced).",
+        options: [{ value: "command", label: "Command center" }, { value: "aurora", label: "Aurora" }, { value: "apothecary", label: "Apothecary" }, { value: "neon", label: "Neon lab" },
+            { value: "mosaic", label: "Mosaic" }, { value: "blueprint", label: "Blueprint" }] },
+    { key: "ui.theme", group: "appearance", label: "Mode", kind: "enum", default: "light",
+        options: [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "system", label: "Follow device" }] },
+    { key: "ui.accent", group: "appearance", label: "Accent colour", kind: "enum", default: "sapphire",
+        hint: "For the Command center design; the other designs have their own colours.",
+        options: [{ value: "sapphire", label: "Electric blue" }, { value: "emerald", label: "Emerald" }, { value: "amethyst", label: "Amethyst" }, { value: "copper", label: "Coral" }] },
+    { key: "ui.font", group: "appearance", label: "Font", kind: "enum", default: "tajawal",
+        options: [{ value: "tajawal", label: "Tajawal + Alexandria" }, { value: "readex", label: "Readex Pro" }, { value: "plex", label: "IBM Plex Sans Arabic" }] },
+    { key: "ui.density", group: "appearance", label: "Density", kind: "enum", default: "comfortable",
+        options: [{ value: "comfortable", label: "Comfortable" }, { value: "compact", label: "Compact" }] },
+    { key: "ui.motion", group: "appearance", label: "Motion", kind: "enum", default: "full",
+        options: [{ value: "full", label: "Full" }, { value: "reduced", label: "Reduced" }] },
+    { key: "ui.backdrop", group: "appearance", label: "Dotted background", kind: "enum", default: "on",
+        options: [{ value: "on", label: "On" }, { value: "off", label: "Plain" }] },
+    // (release 1.24) seasonal themes over any design: Ramadan (with its Iftar evenings), the two Eids and the New Year
+    { key: "ui.seasons", group: "appearance", label: "Seasonal themes", kind: "enum", default: "auto",
+        hint: "Automatic: Ramadan (and, in its evenings, Iftar), the Eids, the other Islamic occasions, Egypt's national days, Sham el-Nessim, the New Year and other days decorate every screen on their date, with a greeting and, in Ramadan, the time left to Iftar. Or turn one on by hand, whatever the date, until you change it back. Each user can also choose their own (Appearance).",
+        // (the occasions of web/src/app/season-dates.ts SEASONS, in its order; release 1.29 added Egypt's national days,
+        // the other Islamic occasions and popular days; Christian holidays are not themed)
+        options: [{ value: "auto", label: "Automatic, by the date" }, { value: "off", label: "Off" },
+            { value: "ramadan", label: "Ramadan, on now" },
+            { value: "eid_fitr", label: "Eid al-Fitr, on now" },
+            { value: "arafah", label: "Day of Arafah, on now" },
+            { value: "eid_adha", label: "Eid al-Adha, on now" },
+            { value: "hijri_new_year", label: "Hijri New Year, on now" },
+            { value: "mawlid", label: "The Prophet's Birthday, on now" },
+            { value: "isra_miraj", label: "Isra and Mi'raj, on now" },
+            { value: "police_day", label: "Police Day · January 25 Revolution, on now" },
+            { value: "sinai_day", label: "Sinai Liberation Day, on now" },
+            { value: "labour_day", label: "Labour Day, on now" },
+            { value: "june30", label: "June 30 Revolution, on now" },
+            { value: "july23", label: "July 23 Revolution, on now" },
+            { value: "october6", label: "Armed Forces Day, on now" },
+            { value: "new_year", label: "New Year, on now" },
+            { value: "sham_nessim", label: "Sham el-Nessim, on now" },
+            { value: "mothers_day", label: "Mother's Day, on now" },
+            { value: "nile_flood", label: "Wafaa El-Nil, on now" },
+            { value: "doctors_day", label: "Egyptian Doctors' Day, on now" },
+            { value: "nurses_day", label: "International Nurses Day, on now" },
+            { value: "pharmacists_day", label: "World Pharmacists Day, on now" }] },
+    // (release 1.30) occasions the hospital does not want: never shown by the date, nor offered in Appearance
+    { key: "ui.seasons_off", group: "appearance", label: "Occasions turned off", kind: "json", default: "[]", editor: "seasons_off",
+        hint: "Occasions with no theme in this hospital: they do not come on by the date and are not offered in Appearance. On a day with two, the other one shows.",
+        check: (v) => jsonOk(v, pathArray(SEASON_VALUES)) },
+    int("ui.hijri_adjust", "appearance", "Hijri date adjustment", 0, -2, 2, "days", "The Hijri calendar is Umm al-Qura's. When the moon is sighted a day earlier or later here, shift it so Ramadan and the Eids start on the right day."),
+    { key: "ui.iftar_lat", group: "appearance", label: "Latitude for Iftar time", hint: "Where the hospital is (Cairo by default): Iftar is sunset there.", kind: "number", default: "30.0444", min: -66, max: 66 },
+    { key: "ui.iftar_lon", group: "appearance", label: "Longitude for Iftar time", kind: "number", default: "31.2357", min: -180, max: 180 },
+    bool("ui.show_legacy_names", "appearance", "Show Access form names under screen names", false),
+    bool("ui.lock_appearance", "appearance", "Stop users changing the appearance", false, "When on, everyone sees the appearance chosen here and the appearance options are hidden from them."),
+    // ---- hospital system link (release 1.14, modules/his/; the feature "his_link" in Admin → Features turns it on)
+    { key: "his.inbox_folder", group: "his", label: "Inbox folder", kind: "text", default: "", optional: true, max: 400,
+        hint: "A folder on the main server (or a shared folder it can reach, \\\\server\\share) where the hospital system puts admissions, discharges and orders: CSV, HL7 v2 or FHIR JSON files. Each file read is moved to processed\\ inside it." },
+    int("his.poll_seconds", "his", "Read the inbox every", 60, 15, 3600, "seconds"),
+    { key: "his.export_folder", group: "his", label: "Dispensing export folder", kind: "text", default: "", optional: true, max: 400,
+        hint: "Where a CSV file of dispensing (patient, item, quantity, batch, price) is written for the hospital's billing and insurance." },
+    int("his.export_minutes", "his", "Write the dispensing file every", 60, 0, 1440, "minutes", "0: only when asked (Hospital system page)."),
+    // ---- online assistant (release 1.15, modules/ai/; the features "ai_assistant" and "rx_photo" turn it on; the API key is
+    // saved on Admin → Online assistant, never in these settings, which every screen reads)
+    { key: "ai.model", group: "ai", label: "Model", kind: "enum", default: "claude-opus-5-5",
+        hint: "Opus is the most capable; Sonnet and Haiku answer faster and cost less.",
+        options: [{ value: "claude-opus-5-5", label: "Claude Opus 5.5" }, { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }, { value: "claude-haiku-5-5", label: "Claude Haiku 5.5" }] },
+    { key: "ai.effort", group: "ai", label: "Effort", kind: "enum", default: "medium",
+        hint: "How hard it thinks before answering: more is slower and costs more.",
+        options: [{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }] },
+    // ---- screens
+    { key: "ui.nav_labels", group: "screens", label: "Screen names", hint: "The original names from the Access system are the defaults.", kind: "json", default: "{}", editor: "nav_labels",
+        check: (v) => jsonOk(v, (o) => !!o && typeof o === "object" && !Array.isArray(o)
+            && Object.entries(o).every(([k, x]) => /^\/[a-z-]*$/.test(k) && typeof x === "string" && x.trim().length > 0 && x.length <= 40)) },
+    // (release 1.24) each screen's icon in the menu, from the icons the app has (web/src/app/icons.ts)
+    { key: "ui.nav_icons", group: "screens", label: "Screen icons", hint: "The icon of each screen in the menu; the original icon is the default.", kind: "json", default: "{}", editor: "nav_icons",
+        check: (v) => jsonOk(v, (o) => !!o && typeof o === "object" && !Array.isArray(o)
+            && Object.entries(o).every(([k, x]) => /^\/[a-z-]*$/.test(k) && typeof x === "string" && /^[a-z0-9-]{1,40}$/.test(x))) },
+    { key: "ui.hidden_screens", group: "screens", label: "Hidden screens", hint: "Hidden from the menu and search for non-admins, and cannot be opened.", kind: "json", default: "[]", editor: "screens",
+        check: (v) => jsonOk(v, pathArray(HIDEABLE)) },
+    { key: "ui.mobile_tabs", group: "screens", label: "Phone tab bar", hint: "Up to four screens shown in the bottom bar on phones.", kind: "json", default: JSON.stringify(["/", "/runs", "/walkin", "/stock"]), editor: "mobile_tabs",
+        check: (v) => jsonOk(v, (o) => pathArray(SCREENS)(o) && o.length >= 2 && o.length <= 4) },
+    { key: "ui.home_screen", group: "screens", label: "First screen after sign-in", kind: "enum", default: "/",
+        options: HIDEABLE.map((p) => ({ value: p, label: p })) },
+    bool("ui.lock_layouts", "screens", "Stop users changing their own layouts", false, "When on, everyone sees the layouts saved for the hospital, their pharmacy and their PC; personal layouts are ignored and \"Only me\" is not offered."),
+    // ---- stock
+    int("stock.low_threshold", "stock", "Low stock threshold", 10, 1, 100000, "units", "An item whose usable stock is below this shows as “Low” on the Stock screen."),
+    int("stock.expiry_warn_days", "stock", "Expiry warning window", 90, 7, 730, DAYS_UNIT, "Batches that expire within this window show under “Expiring soon”."),
+    // ---- safety
+    { key: "orders.verification", group: "safety", label: "Second pharmacist's check of orders", kind: "enum", default: "queue",
+        hint: "New and changed orders wait in Clinical → Verify orders for another pharmacist. Required: they are not dispensed until verified (the daily run leaves them out).",
+        options: [{ value: "off", label: "Off" }, { value: "queue", label: "Queue (dispensing goes on)" }, { value: "required", label: "Required before dispensing" }] },
+    { key: "leaflet.general_advice", group: "safety", label: "Discharge leaflet: general advice", kind: "longtext", default: "", max: 1200, optional: true,
+        hint: "Printed under the medicines on every discharge leaflet, one line per line, in Arabic — written and approved by your pharmacists (missed doses, storage, when to call). Empty: none is printed." },
+    bool("safety.enabled", "safety", "Safety checks", true, "Checks orders, loaded templates and kits, and walk-in tickets against the patient's allergies, the interaction rules, running orders and dose limits before they go ahead. The rules themselves are made by your pharmacists in the Safety screen."),
+    bool("safety.high_alert_double_check", "safety", "Second pharmacist for high-alert medicines", false, "A high-alert medicine is ordered or dispensed only after a second pharmacist enters their username and password."),
+    { key: "barcode.scan_before_dispense", group: "safety", label: "Scan the pack before ward dispensing", kind: "enum", default: "off",
+        hint: "With a 2D scanner: the pack is checked against the order (right medicine, not expired, not quarantined or recalled) before it is dispensed. Off: scanning is optional.",
+        options: [{ value: "off", label: "Optional" }, { value: "high_alert", label: "Required for high-alert medicines" }, { value: "all", label: "Required for every ward dispense" }] },
+    // ---- alerts
+    bool("alerts.expired", "alerts", "Expired batches", true),
+    bool("alerts.out_of_stock", "alerts", "Out-of-stock items", true),
+    bool("alerts.critical", "alerts", "Items with critical cover", true),
+    bool("alerts.expiring", "alerts", "Batches expiring soon", true),
+    bool("alerts.temp", "alerts", "Temporary (TEMP) stock", true),
+    int("alerts.expiring_days", "alerts", "“Expiring soon” in the bell within", 30, 7, 180, DAYS_UNIT),
+    int("alerts.refresh_minutes", "alerts", "Refresh alerts every", 3, 1, 60, "minutes"),
+    bool("alerts.animate", "alerts", "Shake the bell on an urgent alert", true),
+    // ---- analytics
+    { key: "analytics.default_days", group: "analytics", label: "Default period", kind: "enum", default: "30",
+        options: [{ value: "7", label: "1 week" }, { value: "14", label: "2 weeks" }, { value: "30", label: "1 month" }, { value: "90", label: "3 months" }, { value: "180", label: "6 months" }, { value: "365", label: "1 year" }] },
+    int("analytics.cover_critical_days", "analytics", "Critical cover below", 7, 1, 60, DAYS_UNIT, "Days of cover = on hand ÷ average daily use."),
+    int("analytics.cover_low_days", "analytics", "Low cover up to", 14, 2, 120, DAYS_UNIT, "Must be greater than the critical cover threshold."),
+    int("analytics.target_cover_days", "analytics", "Target cover for reorder suggestions", 30, 7, 180, DAYS_UNIT, "The suggested quantity lasts this many days."),
+    int("analytics.abc_a", "analytics", "Class A threshold", 80, 50, 95, "%", "Items that make up this first share of total use."),
+    int("analytics.abc_b", "analytics", "Class B threshold", 95, 60, 99, "%", "Must be greater than the class A threshold; the rest is class C."),
+    int("analytics.risk_window_days", "analytics", "Expected waste window", 120, 30, 365, DAYS_UNIT, "Batches that expire within this window are checked for waste."),
+    int("analytics.radar_days", "analytics", "Expiry radar range", 365, 90, 730, DAYS_UNIT),
+    int("analytics.dead_stock_days", "analytics", "Dead stock: not dispensed for", 90, 30, 365, DAYS_UNIT),
+    int("analytics.top_n", "analytics", "Items in lists", 10, 5, 30, "items"),
+    { key: "analytics.anomaly_sigma", group: "analytics", label: "Unusual day sensitivity", hint: "Standard deviations from the mean; lower = more alerts.", kind: "number", default: "2", min: 1, max: 4 },
+    int("analytics.forecast_days", "analytics", "Forecast days", 14, 0, 60, DAYS_UNIT, "Zero hides the forecast."),
+    { key: "analytics.staff_ranking", group: "analytics", label: "Who sees user activity", kind: "enum", default: "all",
+        options: [{ value: "all", label: "Everyone" }, { value: "admins", label: "Admins only" }, { value: "off", label: "No one" }] },
+    { key: "analytics.sections", group: "analytics", label: "Dashboard sections and order", kind: "json", default: "[]", editor: "sections",
+        hint: "Reorder the sections and hide what you do not need. An empty list = the default order.",
+        check: (v) => jsonOk(v, (o) => Array.isArray(o) && o.every((x) => x && typeof x === "object"
+            && ANALYTICS_SECTIONS.some((s) => s.id === x.id) && typeof x.on === "boolean")
+            && new Set(o.map((x) => x.id)).size === o.length) },
+    // ---- printing
+    { key: "label.width_mm", group: "printing", label: "Label width", kind: "number", default: "55", min: 20, max: 150, unit: "mm" },
+    { key: "label.height_mm", group: "printing", label: "Label height", kind: "number", default: "55", min: 15, max: 150, unit: "mm" },
+    bool("label.preview", "printing", "Live label preview", true, "Shows labels as they will print on every print screen; each user can turn it on or off for themselves on each screen."),
+    { key: "label.preview_view", group: "printing", label: "Default preview view", kind: "enum", default: "single",
+        options: [{ value: "single", label: "One label at a time" }, { value: "grid", label: "All labels" }] },
+    // ---- security
+    int("auth.session_hours", "security", "Session length", 14, 1, 72, "hours", "Users must sign in again after this. Applies to new sessions."),
+    int("auth.password_min", "security", "Minimum password length", 6, 6, 64, "characters"),
+    int("auth.idle_lock_minutes", "security", "Lock the screen after", 15, 0, 240, "minutes idle", "A PC left alone locks: the same person unlocks it with their password or PIN, or someone else signs in instead. 0 = never."),
+    bool("sync.trim_copies", "security", "Pharmacy PCs keep only their own pharmacy's patients", true, "A pharmacy PC's copy of the database then holds no other pharmacy's patients (their stock and dispensing totals stay). Other pharmacies' patients are seen on the main server."),
+    bool("auth.badge_login", "security", "Sign in with a badge and PIN", true, "Users who set a PIN can sign in, and unlock, by scanning their badge (printed from Admin → Users) and typing the PIN."),
+    bool("auth.totp_admins", "security", "Two-step sign-in for administrators", false, "Owner and administrators must also type a code from an authenticator app on their phone. Each one sets it up at their next sign-in."),
+    // ---- backup
+    { key: "backup.dir", group: "backup", label: "Backup folder", hint: "A path on the server PC; a relative path starts from the server's working folder. A different disk from the data disk is best.", kind: "text", default: "backups", max: 260 },
+    int("backup.keep_days", "backup", "Keep backups for", 30, 1, 3650, DAYS_UNIT, "Older backups are deleted automatically."),
+    int("backup.interval_hours", "backup", "Automatic backup every", 1, 1, 24, "hours"),
+    { key: "backup.copy_dir", group: "backup", label: "Also copy each backup to", hint: "A second place, on another disk or PC: a USB disk (E:\\PharmacyBackups) or a shared folder (\\\\PC-NAME\\Backups). Each copy is checked to be the same file. Empty = no copy.", kind: "text", default: "", max: 260, optional: true, check: copyDirProblem },
+    // ---- schedule (engine rules: read-only)
+    { key: "schedule.day_start", group: "schedule", label: "Medical day starts", kind: "time", default: "06:00", readonly: true },
+    { key: "schedule.grace_hours", group: "schedule", label: "Late dose grace period", kind: "int", default: "3", unit: "hours", readonly: true },
+    // ---- features (release 1.11): one switch per feature since 1.4 (core/features.ts); a few use the setting they had
+    ...FEATURES.filter((f) => !f.setting).map((f) => bool(`feature.${f.key}`, "features", f.name, f.default, f.description)),
+];
+export const DEFS = new Map(SETTINGS.map((d) => [d.key, d]));
+/** A blank number field is invalid (z.coerce would turn "" into 0). */
+const blank = (v) => (typeof v === "string" && v.trim() === "" ? Number.NaN : v);
+function zodOf(d) {
+    const lim = (n) => {
+        if (d.min != null)
+            n = n.min(d.min, `${d.label}: at least ${d.min}`);
+        if (d.max != null)
+            n = n.max(d.max, `${d.label}: at most ${d.max}`);
+        return n;
+    };
+    switch (d.kind) {
+        case "text":
+        case "longtext": {
+            const s = z.string().trim().max(d.max ?? 200, `${d.label} is too long`);
+            const t = d.optional ? s : s.min(1, `Enter the ${d.label.toLowerCase()}`);
+            return (d.check ? t.superRefine((v, ctx) => { const why = d.check(v); if (typeof why === "string")
+                ctx.addIssue({ code: "custom", message: `${d.label}: ${why}` }); }) : t);
+        }
+        case "int": return z.preprocess(blank, z.coerce.number({ message: `${d.label}: not a valid number` }).pipe(lim(z.number().int(`${d.label}: must be a whole number`)))).transform(String);
+        case "number": return z.preprocess(blank, z.coerce.number({ message: `${d.label}: not a valid number` }).pipe(lim(z.number()))).transform(String);
+        case "bool": return z.union([z.boolean(), z.literal(0), z.literal(1), z.enum(["0", "1", "true", "false"])])
+            .transform((v) => (v === true || v === 1 || v === "1" || v === "true" ? "1" : "0"));
+        case "enum": return z.enum(d.options.map((o) => o.value), { message: `${d.label}: value not allowed` });
+        case "json": return z.string().max(8000).refine((v) => d.check?.(v) ?? jsonOk(v, () => true), `${d.label}: invalid value`);
+        case "time": return z.string().regex(/^\d{2}:\d{2}$/);
+    }
+}
+/** Body schema of PUT /admin/settings: every editable key, optional; unknown or read-only keys are rejected. */
+export const SETTINGS_BODY = z.object(Object.fromEntries(SETTINGS.filter((d) => !d.readonly).map((d) => [d.key, zodOf(d).optional()]))).strict()
+    .transform((b) => b);
+/** Cross-field rules, checked on the merged (stored + incoming) values. Returns the first problem or null. */
+export function crossCheck(v) {
+    if (Number(v["analytics.cover_low_days"]) <= Number(v["analytics.cover_critical_days"]))
+        return "Low cover threshold must be greater than the critical cover threshold";
+    if (Number(v["analytics.abc_b"]) <= Number(v["analytics.abc_a"]))
+        return "Class B threshold must be greater than the class A threshold";
+    const hidden = JSON.parse(v["ui.hidden_screens"] || "[]");
+    if (hidden.includes(v["ui.home_screen"]))
+        return "The first screen cannot be hidden";
+    if (hidden.length >= SCREENS.length - 1)
+        return "Leave at least one screen visible";
+    return null;
+}
+/** Every setting: stored value when valid, else the default. Unknown stored keys are passed through untouched. */
+export function allSettings() {
+    const out = {};
+    for (const r of db().all("SELECT key, value FROM settings"))
+        if (r.value != null)
+            out[r.key] = r.value;
+    for (const d of SETTINGS)
+        out[d.key] = normalised(d, out[d.key]);
+    return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+}
+/** Settings for every screen: the logo replaced by a short version code ("" without a logo), fetched on its own. */
+export function withLogoVersion(s) {
+    const logo = s["hospital.logo"] ?? "";
+    return { ...s, "hospital.logo": logo ? logoVersion(logo) : "" };
+}
+export const logoVersion = (logo) => createHash("sha256").update(logo).digest("hex").slice(0, 12);
+/** Stored value in its normal form (e.g. a hand-edited bool "true" → "1"), or the default when missing/invalid. */
+function normalised(d, v) {
+    if (v == null)
+        return d.default;
+    if (d.readonly)
+        return v !== "" ? v : d.default;
+    const r = zodOf(d).safeParse(v);
+    return r.success ? r.data : d.default;
+}
+function raw(key) {
+    const d = DEFS.get(key);
+    const v = db().get("SELECT value FROM settings WHERE key=?", [key])?.value;
+    return d ? normalised(d, v) : v ?? "";
+}
+export const settingStr = (key) => raw(key);
+export const settingNum = (key) => Number(raw(key));
+export const settingBool = (key) => raw(key) === "1";
+export function settingJson(key) { return JSON.parse(raw(key)); }
+/** Metadata for the admin form (no functions). */
+export function settingsSchema() {
+    return {
+        groups: GROUPS,
+        settings: SETTINGS.map(({ check: _c, ...d }) => d),
+        screens: SCREENS,
+        analyticsSections: ANALYTICS_SECTIONS,
+    };
+}
