@@ -1,0 +1,28 @@
+{
+  "name": "hospital-pharmacy-system",
+  "version": "1.26.0",
+  "private": true,
+  "type": "module",
+  "description": "Hospital pharmacy dispensing system — rebuild of the legacy MS Access app",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w server & npm run dev -w web",
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "npm run start -w server",
+    "test": "npm test -w server",
+    "import:legacy": "npm run import:legacy -w server --",
+    "check": "npm run check -w server && npm run -w web typecheck && npm test -w web",
+    "release:package": "node tools/release/sign-release.mjs package",
+    "release:control": "node tools/release/sign-release.mjs control",
+    "release:kill": "node tools/release/sign-release.mjs kill",
+    "release:unkill": "node tools/release/sign-release.mjs unkill",
+    "release:licence": "node tools/release/sign-release.mjs licence",
+    "new:migration": "npm run new:migration -w server --"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
