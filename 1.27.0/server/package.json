@@ -1,0 +1,32 @@
+{
+  "name": "@hps/server",
+  "version": "1.27.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --no-warnings=ExperimentalWarning src/main.ts",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/db/schema.sql','dist/db/schema.sql')\"",
+    "start": "node --no-warnings=ExperimentalWarning dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "import:legacy": "tsx --no-warnings=ExperimentalWarning src/db/import-legacy.ts",
+    "new:migration": "node ../tools/release/new-migration.mjs",
+    "check": "tsc -p tsconfig.json --noEmit && vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/static": "^10.1.5",
+    "better-sqlite3-multiple-ciphers": "^13.0.3",
+    "fastify": "^5.12.5",
+    "mdb-reader": "^3.2.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
