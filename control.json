@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.39.0",
+  "latestVersion": "1.41.0",
   "killed": false,
-  "message": "A calmer Command center design",
-  "publishedAt": "2026-11-01T11:17:48.090Z"
+  "message": "Offline transfers keep their batches; counts that read right",
+  "publishedAt": "2026-11-01T15:44:29.696Z"
 }
