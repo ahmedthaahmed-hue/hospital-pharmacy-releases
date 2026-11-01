@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.42.0",
+  "latestVersion": "1.43.0",
   "killed": false,
-  "message": "Sort tables by any column",
-  "publishedAt": "2026-11-01T16:11:16.566Z"
+  "message": "Clearer messages when something is missing",
+  "publishedAt": "2026-11-01T17:38:24.983Z"
 }
