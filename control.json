@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.36.0",
+  "latestVersion": "1.38.0",
   "killed": false,
-  "message": "Offline dispensing keeps its batches",
-  "publishedAt": "2026-10-20T20:08:45.534Z"
+  "message": "Fixes in clinical work, records and stock; pharmacy PCs keep their keys encrypted",
+  "publishedAt": "2026-11-01T11:07:34.599Z"
 }
