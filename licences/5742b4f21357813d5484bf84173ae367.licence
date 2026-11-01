@@ -1,0 +1,4 @@
+{
+  "payload": "{\"typ\":\"hps-licence\",\"v\":2,\"machines\":[\"5742b4f21357813d5484bf84173ae367\"],\"expires\":\"2026-12-01\",\"issuedAt\":\"2026-11-01T19:26:25.888Z\"}",
+  "sig": "WvcKi+RoGBHViC2p4bF9Np/0iA1v2xizvVHxhek64ugQuQM4An0h70fR3gyJ57vZ6WKkwPWhAZug1HDPSMoJAg=="
+}
