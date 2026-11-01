@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.41.0",
+  "latestVersion": "1.42.0",
   "killed": false,
-  "message": "Offline transfers keep their batches; counts that read right",
-  "publishedAt": "2026-11-01T15:44:29.696Z"
+  "message": "Sort tables by any column",
+  "publishedAt": "2026-11-01T16:11:16.566Z"
 }
