@@ -37280,7 +37280,7 @@ async function publicRelayRoutes(app) {
 }
 
 // server/src/relay-main.ts
-var VERSION = true ? "1.48.0" : "dev";
+var VERSION = true ? "1.49.0" : "dev";
 function fileStore(dir) {
   mkdirSync(dir, { recursive: true, mode: 448 });
   const file = join(dir, "relay.json");
