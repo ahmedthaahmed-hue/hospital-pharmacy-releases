@@ -34994,7 +34994,7 @@ var require_response = __commonJS({
     var { Writable, Readable, addAbortSignal } = __require("node:stream");
     var util = __require("node:util");
     var setCookie = require_set_cookie();
-    function Response(req, onEnd, reject) {
+    function Response2(req, onEnd, reject) {
       http.ServerResponse.call(this, req);
       if (req._lightMyRequest?.payloadAsStream) {
         const read = this.emit.bind(this, "drain");
@@ -35060,15 +35060,15 @@ var require_response = __commonJS({
       this.once("error", onEndFailure);
       this.once("close", onEndFailure);
     }
-    util.inherits(Response, http.ServerResponse);
-    Response.prototype.setTimeout = function(msecs, callback) {
+    util.inherits(Response2, http.ServerResponse);
+    Response2.prototype.setTimeout = function(msecs, callback) {
       this.timeoutHandle = setTimeout(() => {
         this.emit("timeout");
       }, msecs);
       this.on("timeout", callback);
       return this;
     };
-    Response.prototype.writeHead = function() {
+    Response2.prototype.writeHead = function() {
       const result = http.ServerResponse.prototype.writeHead.apply(this, arguments);
       copyHeaders(this);
       if (this._lightMyRequest.stream) {
@@ -35076,7 +35076,7 @@ var require_response = __commonJS({
       }
       return result;
     };
-    Response.prototype.write = function(data, encoding, callback) {
+    Response2.prototype.write = function(data, encoding, callback) {
       if (this.timeoutHandle) {
         clearTimeout(this.timeoutHandle);
       }
@@ -35088,7 +35088,7 @@ var require_response = __commonJS({
         return true;
       }
     };
-    Response.prototype.end = function(data, encoding, callback) {
+    Response2.prototype.end = function(data, encoding, callback) {
       if (data) {
         this.write(data, encoding);
       }
@@ -35096,7 +35096,7 @@ var require_response = __commonJS({
       this.emit("finish");
       this.destroy();
     };
-    Response.prototype.destroy = function(error) {
+    Response2.prototype.destroy = function(error) {
       if (this.destroyed) return;
       this.destroyed = true;
       if (error) {
@@ -35104,7 +35104,7 @@ var require_response = __commonJS({
       }
       process.nextTick(() => this.emit("close"));
     };
-    Response.prototype.addTrailers = function(trailers) {
+    Response2.prototype.addTrailers = function(trailers) {
       for (const key in trailers) {
         this._lightMyRequest.trailers[key.toLowerCase().trim()] = trailers[key].toString().trim();
       }
@@ -35176,7 +35176,7 @@ var require_response = __commonJS({
         }
       });
     }
-    module.exports = Response;
+    module.exports = Response2;
   }
 });
 
@@ -36015,7 +36015,7 @@ var require_light_my_request = __commonJS({
     "use strict";
     var assert = __require("node:assert");
     var Request = require_request2();
-    var Response = require_response();
+    var Response2 = require_response();
     var errorMessage = "The dispatch function has already been invoked";
     var optsValidator = require_config_validator2();
     function inject(dispatchFunc, options, callback) {
@@ -36065,16 +36065,16 @@ var require_light_my_request = __commonJS({
       const RequestConstructor = options.Request ? Request.CustomRequest : Request;
       if (dispatchFunc.request && dispatchFunc.request.app === dispatchFunc) {
         Object.setPrototypeOf(Object.getPrototypeOf(dispatchFunc.request), RequestConstructor.prototype);
-        Object.setPrototypeOf(Object.getPrototypeOf(dispatchFunc.response), Response.prototype);
+        Object.setPrototypeOf(Object.getPrototypeOf(dispatchFunc.response), Response2.prototype);
       }
       if (typeof callback === "function") {
         const req = new RequestConstructor(options);
-        const res = new Response(req, callback);
+        const res = new Response2(req, callback);
         return makeRequest(dispatchFunc, server, req, res);
       } else {
         return new Promise((resolve, reject) => {
           const req = new RequestConstructor(options);
-          const res = new Response(req, resolve, reject);
+          const res = new Response2(req, resolve, reject);
           makeRequest(dispatchFunc, server, req, res);
         });
       }
@@ -36158,7 +36158,7 @@ var require_light_my_request = __commonJS({
       };
     });
     function isInjection(obj) {
-      return obj instanceof Request || obj instanceof Response || obj?.constructor?.name === "_CustomLMRRequest";
+      return obj instanceof Request || obj instanceof Response2 || obj?.constructor?.name === "_CustomLMRRequest";
     }
     module.exports = inject;
     module.exports.default = inject;
@@ -37145,6 +37145,7 @@ var POLL_HOLD_MS = 25e3;
 var OFFLINE_AFTER_MS = 6e4;
 var MAX_WAITING = 50;
 var MAX_BODY = 512 * 1024;
+var MAX_REPLY = 4 * 1024 * 1024;
 var CLOCK_SKEW_MS = 12e4;
 var hospitals = /* @__PURE__ */ new Map();
 var seq = 0;
@@ -37226,7 +37227,7 @@ async function replyFrom(headers, body) {
     return 400;
   }
   const w = typeof r.id === "string" ? s.h.inflight.get(r.id) : void 0;
-  if (!w || typeof r.body !== "string" || r.body.length > MAX_BODY) return 404;
+  if (!w || typeof r.body !== "string" || r.body.length > MAX_REPLY) return 404;
   s.h.inflight.delete(w.id);
   w.done({ status: r.status === 200 ? 200 : 400, body: r.body });
   return 200;
@@ -37236,7 +37237,7 @@ var relayStatus = () => ({ on: relayOn(), hospitals: [...hospitals.values()].fil
 // server/src/platform/relay-routes.ts
 var cors = (reply) => reply.header("access-control-allow-origin", "*").header("access-control-allow-methods", "POST, GET, OPTIONS").header("access-control-allow-headers", "content-type").header("access-control-max-age", "600");
 async function publicRelayRoutes(app) {
-  app.addContentTypeParser("application/json", { parseAs: "string", bodyLimit: 600 * 1024 }, (_req, body, done) => done(null, body));
+  app.addContentTypeParser("application/json", { parseAs: "string", bodyLimit: 4500 * 1024 }, (_req, body, done) => done(null, body));
   const json = async (req, reply) => {
     if (!/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) return reply.status(415).send({ error: "JSON only" });
   };
@@ -37267,7 +37268,7 @@ async function publicRelayRoutes(app) {
     if (r.status === 401) noteFailure("relay-server", req.ip, "");
     return reply.status(r.status).send(r.status === 200 ? { items: r.items } : { error: r.status === 401 ? "Refused" : "Not found" });
   });
-  app.post("/reply", { bodyLimit: 600 * 1024, onRequest: json }, async (req, reply) => {
+  app.post("/reply", { bodyLimit: 4500 * 1024, onRequest: json }, async (req, reply) => {
     try {
       assertNotThrottled("relay-server", req.ip, "");
     } catch {
@@ -37280,7 +37281,7 @@ async function publicRelayRoutes(app) {
 }
 
 // server/src/relay-main.ts
-var VERSION = true ? "1.49.0" : "dev";
+var VERSION = true ? "1.50.0" : "dev";
 function fileStore(dir) {
   mkdirSync(dir, { recursive: true, mode: 448 });
   const file = join(dir, "relay.json");
@@ -37302,7 +37303,7 @@ function fileStore(dir) {
 }
 async function buildRelay(dir) {
   setRelayStore(fileStore(dir));
-  const app = (0, import_fastify.default)({ logger: false, trustProxy: "127.0.0.1", bodyLimit: 640 * 1024 });
+  const app = (0, import_fastify.default)({ logger: false, trustProxy: "127.0.0.1", bodyLimit: 4600 * 1024 });
   app.get("/", async (_req, reply) => reply.type("text/plain").send(`Hospital Pharmacy phone relay ${VERSION}
 `));
   app.get("/health", async () => ({ ok: true, version: VERSION, hospitals: relayStatus().hospitals }));
