@@ -1,7 +1,7 @@
 {
-  "latestVersion": "1.51.0",
+  "latestVersion": "1.52.0",
   "killed": false,
-  "message": "The hospital's operation kits and item list; complete the items' details in one table",
+  "message": "The label font, uploaded once; System health shows whether the hospital is ready for work",
   "relayUrl": "https://79-72-15-136.sslip.io",
-  "publishedAt": "2026-11-15T22:28:57.813Z"
+  "publishedAt": "2026-11-15T23:05:48.338Z"
 }
