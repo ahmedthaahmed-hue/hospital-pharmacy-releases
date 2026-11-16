@@ -1,0 +1,7 @@
+{
+  "name": "hospital-pharmacy-window",
+  "productName": "Hospital Pharmacy",
+  "private": true,
+  "description": "The app's own window: the Hospital Pharmacy screens without a web browser (docs/DESKTOP.md)",
+  "main": "main.cjs"
+}
