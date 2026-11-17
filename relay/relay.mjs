@@ -37112,6 +37112,50 @@ async function sha256Text(text) {
   return b64(await subtle().digest("SHA-256", enc.encode(text)));
 }
 
+// server/src/platform/releases.ts
+import { verify as edVerify } from "node:crypto";
+var RELEASE_PUBLIC_KEY_SPKI_B64 = "MCowBQYDK2VwAyEAIbNP38wkYBwniivmxSHCsgIgen334969+63vlzB/elM=";
+var releasesBase = () => (process.env.RELEASES_URL ?? "https://raw.githubusercontent.com/ahmedthaahmed-hue/hospital-pharmacy-releases/main").replace(/\/+$/, "");
+function publicKey() {
+  return { key: Buffer.from(RELEASE_PUBLIC_KEY_SPKI_B64, "base64"), format: "der", type: "spki" };
+}
+function verifySignature(bytes2, sigB64) {
+  try {
+    return edVerify(null, Buffer.isBuffer(bytes2) ? bytes2 : Buffer.from(bytes2), publicKey(), Buffer.from(sigB64, "base64"));
+  } catch {
+    return false;
+  }
+}
+var FetchError = class extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+  status;
+};
+async function fetchText(url, timeoutMs = 15e3) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), timeoutMs);
+  try {
+    let r;
+    try {
+      r = await fetch(url, { signal: c.signal, cache: "no-store" });
+    } catch {
+      throw new FetchError(0, `Could not reach the update server (${new URL(url).host}) \u2014 check this PC's internet connection`);
+    }
+    if (!r.ok) throw new FetchError(r.status, `${r.status} for ${url}`);
+    return await r.text();
+  } finally {
+    clearTimeout(t);
+  }
+}
+async function fetchControl() {
+  const base = releasesBase();
+  const [body, sig] = await Promise.all([fetchText(`${base}/control.json`), fetchText(`${base}/control.json.sig`)]);
+  if (!verifySignature(body, sig.trim())) throw new Error("The update server's control file is not correctly signed \u2014 ignoring it.");
+  return JSON.parse(body);
+}
+
 // server/src/platform/relay.ts
 var store = null;
 function setRelayStore(s) {
@@ -37244,6 +37288,50 @@ function findByMachine(machine) {
   for (const e of hospitals) if (e[1].machine === code && (!best || e[1].lastPoll > best[1].lastPoll)) best = e;
   return best ? { server: best[0], pub: best[1].pub, online: Date.now() - best[1].lastPoll < OFFLINE_AFTER_MS } : null;
 }
+var ownerKeysSource = async () => {
+  const c = await fetchControl();
+  return Array.isArray(c.ownerKeys) ? c.ownerKeys.filter((k) => typeof k === "string") : [];
+};
+var ownerKeysCache = null;
+var ownerKeysKeepMs = 10 * 6e4;
+async function relayOwnerKeys(want, now = Date.now()) {
+  const c = ownerKeysCache, age = c ? now - c.at : Infinity;
+  if (c && age < ownerKeysKeepMs && (c.keys.includes(want) || age < 6e4)) return c.keys;
+  try {
+    ownerKeysCache = { keys: await ownerKeysSource(), at: now };
+  } catch {
+    if (ownerKeysCache) ownerKeysCache.at = now;
+  }
+  return ownerKeysCache?.keys ?? null;
+}
+var ownerListText = (t) => `hps-owner-list:${t}`;
+async function ownerList(body, now = Date.now()) {
+  if (!relayOn()) return { status: 404, body: { error: "Not found" } };
+  let r;
+  try {
+    r = JSON.parse(body);
+  } catch {
+    return { status: 400, body: { error: "Bad request" } };
+  }
+  const { pub, t, mac } = r;
+  if (typeof pub !== "string" || typeof t !== "number" || typeof mac !== "string" || !/^[A-Za-z0-9_-]{86,88}$/.test(pub))
+    return { status: 400, body: { error: "Bad request" } };
+  if (Math.abs(now - t) > CLOCK_SKEW_MS) return { status: 401, body: { error: "The device's clock is off: set its time right", code: "clock" } };
+  const keys2 = await relayOwnerKeys(pub, now);
+  if (keys2 === null) return { status: 503, body: { error: "The relay cannot read the owner's control file right now", code: "control" } };
+  if (!keys2.includes(pub)) return { status: 401, body: { error: "This device's key is not published", code: "refused" } };
+  let ok = false;
+  try {
+    ok = await relayMacOk(await relayMacKey((await relayKey()).priv, pub), ownerListText(t), mac);
+  } catch {
+    ok = false;
+  }
+  if (!ok) return { status: 401, body: { error: "Refused", code: "refused" } };
+  const best = /* @__PURE__ */ new Map();
+  for (const h of hospitals.values()) if (h.machine && (!best.has(h.machine) || h.lastPoll > best.get(h.machine).lastPoll)) best.set(h.machine, h);
+  const installations = [...best.entries()].map(([machine, h]) => ({ machine, online: now - h.lastPoll < OFFLINE_AFTER_MS, lastSeen: new Date(h.lastPoll).toISOString() })).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+  return { status: 200, body: { installations } };
+}
 var relayStatus = () => ({ on: relayOn(), hospitals: [...hospitals.values()].filter((h) => Date.now() - h.lastPoll < OFFLINE_AFTER_MS).length });
 
 // server/src/platform/relay-routes.ts
@@ -37271,6 +37359,18 @@ async function publicRelayRoutes(app) {
       return reply.status(404).send({ error: "No main server with this machine code is connected", code: "not_found" });
     }
     return reply.send(f);
+  });
+  app.options("/owner/list", async (_req, reply) => cors(reply).status(204).send());
+  app.post("/owner/list", { bodyLimit: 4 * 1024, onRequest: json }, async (req, reply) => {
+    cors(reply);
+    try {
+      assertNotThrottled("relay", req.ip, "");
+    } catch {
+      return reply.status(429).send({ error: "Too many requests from this address \u2014 try again later" });
+    }
+    const a = await ownerList(String(req.body ?? ""));
+    if (a.status === 401) noteFailure("relay", req.ip, "");
+    return reply.status(a.status).send(a.body);
   });
   app.post("/to/:server", { bodyLimit: 600 * 1024, onRequest: json }, async (req, reply) => {
     cors(reply);
@@ -37307,7 +37407,7 @@ async function publicRelayRoutes(app) {
 }
 
 // server/src/relay-main.ts
-var VERSION = true ? "1.59.0" : "dev";
+var VERSION = true ? "1.60.0" : "dev";
 function fileStore(dir) {
   mkdirSync(dir, { recursive: true, mode: 448 });
   const file = join(dir, "relay.json");

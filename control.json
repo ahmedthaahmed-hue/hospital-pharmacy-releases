@@ -1,10 +1,10 @@
 {
-  "latestVersion": "1.59.0",
+  "latestVersion": "1.60.0",
   "killed": false,
-  "message": "The phone app's This phone screen is simpler; linking, screens and updates work as before",
-  "relayUrl": "https://79-72-15-136.sslip.io",
-  "publishedAt": "2026-11-17T21:17:20.544Z",
+  "message": "No changes to your screens in this version",
   "ownerKeys": [
     "BJaZB4r1Yok9NnSyNezV9LESp_ax2j6nXRZWtQc6FEwAxLDelGwxYFowT-cdoqtRZUSyPdTBnV1lYlRRemjcPkg"
-  ]
+  ],
+  "relayUrl": "https://79-72-15-136.sslip.io",
+  "publishedAt": "2026-11-17T21:53:32.697Z"
 }
