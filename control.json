@@ -1,7 +1,7 @@
 {
-  "latestVersion": "1.56.0",
+  "latestVersion": "1.57.0",
   "killed": false,
-  "message": "A larger logo without its background, on the PC icons too; the phone app updates itself and switches pharmacy",
+  "message": "A pharmacy PC matches its main server's version by itself; the owner can turn off one installation alone",
   "relayUrl": "https://79-72-15-136.sslip.io",
-  "publishedAt": "2026-11-16T07:03:40.478Z"
+  "publishedAt": "2026-11-17T16:51:29.786Z"
 }
