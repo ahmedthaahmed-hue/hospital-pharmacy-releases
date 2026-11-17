@@ -37189,7 +37189,7 @@ async function signedBy(headers, what, body) {
   if (!macKey) return null;
   if (!await relayMacOk(macKey, `${what}|${server}|${at}|${await sha256Text(body)}`, mac)) return null;
   if (!h) {
-    h = { queue: [], inflight: /* @__PURE__ */ new Map(), poller: null, lastPoll: 0, macKey };
+    h = { queue: [], inflight: /* @__PURE__ */ new Map(), poller: null, lastPoll: 0, macKey, pub };
     hospitals.set(server, h);
   }
   return { server, h };
@@ -37200,6 +37200,11 @@ async function pollFor(headers, body, holdMs = POLL_HOLD_MS) {
   if (!s) return { status: 401, items: [] };
   const { h } = s;
   h.lastPoll = Date.now();
+  try {
+    const m = JSON.parse(body)?.m;
+    h.machine = typeof m === "string" && /^[0-9a-f]{8,64}$/.test(m) ? m : void 0;
+  } catch {
+  }
   if (h.queue.length) return { status: 200, items: take(h).map(({ id, body: body2 }) => ({ id, body: body2 })) };
   if (h.poller) h.poller([]);
   const items = await new Promise((ok) => {
@@ -37232,6 +37237,13 @@ async function replyFrom(headers, body) {
   w.done({ status: r.status === 200 ? 200 : 400, body: r.body });
   return 200;
 }
+function findByMachine(machine) {
+  const code = machine.toLowerCase().replace(/[^0-9a-f]/g, "");
+  if (!relayOn() || code.length < 8) return null;
+  let best = null;
+  for (const e of hospitals) if (e[1].machine === code && (!best || e[1].lastPoll > best[1].lastPoll)) best = e;
+  return best ? { server: best[0], pub: best[1].pub, online: Date.now() - best[1].lastPoll < OFFLINE_AFTER_MS } : null;
+}
 var relayStatus = () => ({ on: relayOn(), hospitals: [...hospitals.values()].filter((h) => Date.now() - h.lastPoll < OFFLINE_AFTER_MS).length });
 
 // server/src/platform/relay-routes.ts
@@ -37245,6 +37257,20 @@ async function publicRelayRoutes(app) {
   app.get("/key", async (_req, reply) => {
     if (!relayOn()) return reply.status(404).send({ error: "Not found" });
     return cors(reply).send({ pub: (await relayKey()).pub });
+  });
+  app.get("/find/:machine", async (req, reply) => {
+    cors(reply);
+    try {
+      assertNotThrottled("relay", req.ip, "");
+    } catch {
+      return reply.status(429).send({ error: "Too many requests from this address \u2014 try again later" });
+    }
+    const f = findByMachine(String(req.params.machine ?? "").slice(0, 80));
+    if (!f) {
+      noteFailure("relay", req.ip, "");
+      return reply.status(404).send({ error: "No main server with this machine code is connected", code: "not_found" });
+    }
+    return reply.send(f);
   });
   app.post("/to/:server", { bodyLimit: 600 * 1024, onRequest: json }, async (req, reply) => {
     cors(reply);
@@ -37281,7 +37307,7 @@ async function publicRelayRoutes(app) {
 }
 
 // server/src/relay-main.ts
-var VERSION = true ? "1.57.0" : "dev";
+var VERSION = true ? "1.58.0" : "dev";
 function fileStore(dir) {
   mkdirSync(dir, { recursive: true, mode: 448 });
   const file = join(dir, "relay.json");
