@@ -37150,10 +37150,16 @@ async function fetchText(url, timeoutMs = 15e3) {
   }
 }
 async function fetchControl() {
+  return (await fetchControlSigned()).control;
+}
+async function fetchControlSigned() {
   const base = releasesBase();
   const [body, sig] = await Promise.all([fetchText(`${base}/control.json`), fetchText(`${base}/control.json.sig`)]);
-  if (!verifySignature(body, sig.trim())) throw new Error("The update server's control file is not correctly signed \u2014 ignoring it.");
-  return JSON.parse(body);
+  return { control: parseSignedControl(body, sig), text: body, sig: sig.trim() };
+}
+function parseSignedControl(text, sigB64) {
+  if (!verifySignature(text, sigB64.trim())) throw new Error("The update server's control file is not correctly signed \u2014 ignoring it.");
+  return JSON.parse(text);
 }
 
 // server/src/platform/relay.ts
@@ -37407,7 +37413,7 @@ async function publicRelayRoutes(app) {
 }
 
 // server/src/relay-main.ts
-var VERSION = true ? "1.63.0" : "dev";
+var VERSION = true ? "1.64.0" : "dev";
 function fileStore(dir) {
   mkdirSync(dir, { recursive: true, mode: 448 });
   const file = join(dir, "relay.json");
